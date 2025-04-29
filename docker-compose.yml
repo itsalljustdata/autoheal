@@ -1,0 +1,78 @@
+x-localtime: &localtime
+  type: bind
+  source: /etc/localtime
+  target: /etc/localtime
+  read_only: true
+
+
+services:
+  autoheal:
+    container_name: ${CONTAINER_NAME_AUTOHEAL:-autoheal}
+    image: docker:cli
+    hostname: ${CONTAINER_NAME_AUTOHEAL}
+    restart: unless-stopped
+    depends_on:
+      - socket-proxy
+    volumes:
+      - type: bind
+        source: ${COMPOSE_DIR:-./}/autoheal.sh
+        target: /autoheal.sh
+        read_only: true
+      - *localtime
+    command: sh -c 'echo "Starting ${CONTAINER_NAME_AUTOHEAL}"; sleep infinity'
+    healthcheck:
+      test: ["CMD", "/autoheal.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    networks:
+      - docker-socket-proxy
+    environment:
+      - DOCKER_HOST=tcp://${CONTAINER_NAME_PROXY}:2375
+    labels:
+      au.gov.wa.mainroads.description: Auto-restart unhealthy containers
+      au.gov.wa.mainroads.department: Docker infrastructure
+
+  socket-proxy:
+    image: ghcr.io/tecnativa/docker-socket-proxy:0.3.0
+    container_name: $CONTAINER_NAME_PROXY
+    hostname: ${CONTAINER_NAME_PROXY}
+    restart: unless-stopped
+    volumes:
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+        read_only: false
+      - type: bind
+        source: ${COMPOSE_DIR:-./}/haproxy.cfg
+        target: /usr/local/etc/haproxy/haproxy.cfg.template
+        read_only: true
+      - type: bind
+        source: ${COMPOSE_DIR:-./}/server-state
+        target: /var/lib/haproxy/server-state
+        read_only: true
+      - type: bind
+        source: ${COMPOSE_DIR:-./}/healthcheck_proxy.sh
+        target: /healthcheck.sh
+        read_only: true
+      - *localtime
+    env_file:
+      - ${COMPOSE_DIR:-.}/docker-socket-proxy.env
+    healthcheck:
+      test: ["CMD", "/healthcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    networks:
+      - docker-socket-proxy
+    labels:
+      au.gov.wa.mainroads.description: Docker socket proxy
+      au.gov.wa.mainroads.department: Docker infrastructure
+
+networks:
+  docker-socket-proxy:
+    name: ${CONTAINER_NAME_AUTOHEAL}-internal
+    driver: bridge
+    internal: true
