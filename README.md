@@ -7,7 +7,7 @@ A containerized solution that automatically restarts unhealthy Docker containers
 Docker Autoheal is a lightweight, secure monitoring system that checks for containers marked with health checks and automatically restarts them if they're detected to be in an unhealthy state. It consists of two main components:
 
 1. **Autoheal Service**: Monitors containers with health checks and initiates restarts when needed
-2. **Socket Proxy Service**: Provides a secure interface to the Docker socket with fine-grained permissions
+2. **Socket Proxy Service**: Provides a secure interface to the Docker socket with fine-grained permissions ([tecnativa/docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy))
 
 ## Features
 
@@ -48,7 +48,6 @@ The following environment variables can be configured:
 
 - `CONTAINER_NAME_AUTOHEAL`: Name for the autoheal container (default: `autoheal`)
 - `CONTAINER_NAME_PROXY`: Name for the socket proxy (derived from autoheal name)
-- `COMPOSE_DIR`: Directory containing the configuration files
 
 ## How It Works
 
@@ -95,7 +94,9 @@ The system consists of:
 - **autoheal.sh**: Main script that checks and restarts unhealthy containers
 - **socket-proxy**: HAProxy-based Docker socket proxy for secure API access
 - **docker-socket-proxy.env**: Environment configuration for API permissions
-- **haproxy.cfg**: HAProxy configuration for the socket proxy
+- **haproxy.cfg**: HAProxy configuration for the socket proxy. Modification to default one based on [issue #123](https://github.com/Tecnativa/docker-socket-proxy/issues/123) in [tecnativa/docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy).
+- **server-state**: empty file for binding to avoid warning in [tecnativa/docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy).
+- **healthcheck-proxy.sh**: Healthcheck script for proxy container
 
 ## License
 
