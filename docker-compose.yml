@@ -1,78 +1,86 @@
-x-localtime: &localtime
+
+# YAML Anchors
+x-container-name: &container-name ${CONTAINER_NAME_AUTOHEAL:-autoheal}
+x-network-name: &network-name ${CONTAINER_NAME_AUTOHEAL:-autoheal}-internal
+x-container-name-proxy: &container-name-proxy ${CONTAINER_NAME_PROXY:-socket-proxy}
+x-localtime: &localtime /etc/localtime
+x-dockersock: &docker-sock /var/run/docker.sock
+
+x-localtime-bind: &localtimeBindVolume
   type: bind
-  source: /etc/localtime
-  target: /etc/localtime
+  source: *localtime
+  target: *localtime
   read_only: true
 
+x-label-noautoheal: &label-noautoheal
+  autoheal: "false"
 
+x-labels: &fullLabels
+  labels:
+    <<: *label-noautoheal
+
+x-healthcheck: &healthcheck
+  healthcheck:
+    test: ["CMD", "/healthcheck.sh"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
+    start_period: 5s
+
+x-networks: &networks
+  networks:
+    - docker-socket-proxy
+
+x-common: &common
+    restart: unless-stopped
+    <<: [*healthcheck, *networks, *fullLabels]
+
+
+# Actual Services
 services:
   autoheal:
-    container_name: ${CONTAINER_NAME_AUTOHEAL:-autoheal}
+    container_name: *container-name
     image: docker:cli
-    hostname: ${CONTAINER_NAME_AUTOHEAL}
-    restart: unless-stopped
+    <<: *common
+    volumes:
+      - *localtimeBindVolume
+      - type: bind
+        source: autoheal.sh
+        target: /healthcheck.sh
+        read_only: true
+    command: sh -c 'echo "Starting ${CONTAINER_NAME_AUTOHEAL}"; sleep infinity'
+    environment:
+      DOCKER_HOST: tcp://socket-proxy:2375
     depends_on:
       - socket-proxy
-    volumes:
-      - type: bind
-        source: ${COMPOSE_DIR:-./}/autoheal.sh
-        target: /autoheal.sh
-        read_only: true
-      - *localtime
-    command: sh -c 'echo "Starting ${CONTAINER_NAME_AUTOHEAL}"; sleep infinity'
-    healthcheck:
-      test: ["CMD", "/autoheal.sh"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 5s
-    networks:
-      - docker-socket-proxy
-    environment:
-      - DOCKER_HOST=tcp://${CONTAINER_NAME_PROXY}:2375
-    labels:
-      au.gov.wa.mainroads.description: Auto-restart unhealthy containers
-      au.gov.wa.mainroads.department: Docker infrastructure
 
   socket-proxy:
+    container_name: *container-name-proxy
     image: ghcr.io/tecnativa/docker-socket-proxy:0.3.0
-    container_name: $CONTAINER_NAME_PROXY
-    hostname: ${CONTAINER_NAME_PROXY}
-    restart: unless-stopped
+    <<: *common
     volumes:
+      - *localtimeBindVolume
       - type: bind
-        source: /var/run/docker.sock
-        target: /var/run/docker.sock
+        source: *docker-sock
+        target: *docker-sock
         read_only: false
       - type: bind
-        source: ${COMPOSE_DIR:-./}/haproxy.cfg
+        source: haproxy.cfg
         target: /usr/local/etc/haproxy/haproxy.cfg.template
         read_only: true
       - type: bind
-        source: ${COMPOSE_DIR:-./}/server-state
+        source: server-state
         target: /var/lib/haproxy/server-state
         read_only: true
       - type: bind
-        source: ${COMPOSE_DIR:-./}/healthcheck_proxy.sh
+        source: healthcheck_proxy.sh
         target: /healthcheck.sh
         read_only: true
-      - *localtime
     env_file:
-      - ${COMPOSE_DIR:-.}/docker-socket-proxy.env
-    healthcheck:
-      test: ["CMD", "/healthcheck.sh"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 5s
-    networks:
-      - docker-socket-proxy
-    labels:
-      au.gov.wa.mainroads.description: Docker socket proxy
-      au.gov.wa.mainroads.department: Docker infrastructure
+      - docker-socket-proxy.env
 
 networks:
   docker-socket-proxy:
-    name: ${CONTAINER_NAME_AUTOHEAL}-internal
+    name: *network-name
     driver: bridge
     internal: true
